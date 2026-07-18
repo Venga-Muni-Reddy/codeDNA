@@ -26,7 +26,35 @@ console.log("Mongo URI : ", MONGO_URI)
 app.use(helmet({
   contentSecurityPolicy: false, // Turn off CSP for easy SVG/Mermaid inline rendering during demos
 }));
-app.use(cors());
+// Production-ready CORS Configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
+  : ['http://localhost:5173', 'http://localhost:3000'];
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman, or same-origin)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const isAllowed = allowedOrigins.includes(origin) ||
+      (process.env.NODE_ENV === 'development' && origin.startsWith('http://localhost:'));
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS]: Request blocked from origin: ${origin}`);
+      callback(new Error('Blocked by CORS policy (Origin not allowed)'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200, // Status code to send for successful preflight requests
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Main authentication endpoints
