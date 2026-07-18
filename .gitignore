@@ -1,0 +1,33 @@
+# Dependency directories
+node_modules/
+/backend/node_modules/
+/frontend/node_modules/
+
+# Production builds
+dist/
+/backend/dist/
+/frontend/dist/
+
+# Local configuration / Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Uploads and temporary analysis storage
+uploads/
+/backend/uploads/
+temp/
+/backend/temp/
+
+# OS specific files
+.DS_Store
+Thumbs.db
