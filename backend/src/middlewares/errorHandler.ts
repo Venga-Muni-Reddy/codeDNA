@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 export const errorHandler = (
   err: Error,
@@ -27,7 +28,7 @@ export const errorHandler = (
     message = 'Your token has expired. Please log in again.';
   } else {
     // Log unexpected errors
-    console.error('[Unhandled Error]:', err);
+    logger.error('[Unhandled Error]:', err);
   }
 
   res.status(statusCode).json({

@@ -12,6 +12,7 @@ import {
   getProjectArchitecture,
   getProjectDocumentation,
   explainProjectNode,
+  getProjectFileContent,
 } from '../controllers/project';
 import { authenticate } from '../middlewares/auth';
 
@@ -55,6 +56,7 @@ router.get('/:id', authenticate, getProject);
 router.get('/:id/dependencies', authenticate, getProjectDependencies);
 router.get('/:id/architecture', authenticate, getProjectArchitecture);
 router.get('/:id/documentation', authenticate, getProjectDocumentation);
+router.get('/:id/file', authenticate, getProjectFileContent);
 router.post('/:id/explain', authenticate, explainProjectNode);
 router.delete('/:id', authenticate, deleteProject);
 

@@ -520,3 +520,56 @@ Provide a direct, helpful, and concise answer formatted in Markdown.`;
   }
 };
 
+export const getProjectFileContent = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const filePath = req.query.path as string;
+    const userId = req.user?.userId;
+
+    if (!filePath) {
+      throw new AppError('File path is required', 400);
+    }
+
+    const project = await Project.findOne({ _id: id, owner: userId });
+    if (!project) {
+      throw new AppError('Project not found', 404);
+    }
+
+    const fileNode = await FileNode.findOne({ project: id, path: filePath, type: 'file' });
+    if (!fileNode) {
+      throw new AppError('File not found in database registry', 404);
+    }
+
+    const projectDir = path.resolve(PROJECTS_ROOT, id);
+    const absoluteFilePath = path.resolve(projectDir, filePath);
+    
+    // Directory traversal security check
+    if (!absoluteFilePath.startsWith(projectDir)) {
+      throw new AppError('Access denied: Invalid file path', 400);
+    }
+
+    if (!fs.existsSync(absoluteFilePath)) {
+      throw new AppError('File not found on local storage', 404);
+    }
+
+    const content = fs.readFileSync(absoluteFilePath, 'utf-8');
+
+    res.status(200).json({
+      success: true,
+      message: 'File content retrieved successfully',
+      data: {
+        content,
+      },
+      errors: null,
+      meta: {},
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
