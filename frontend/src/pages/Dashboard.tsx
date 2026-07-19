@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { FeatureFinder } from './FeatureFinder';
+import { ImpactAnalyzer } from './ImpactAnalyzer';
 import cytoscape from 'cytoscape';
 import mermaid from 'mermaid';
 import { projectService } from '../services/api';
@@ -15,7 +17,7 @@ mermaid.initialize({
 export const Dashboard = () => {
   const { user, clearAuth, projects, setProjects, activeProject, setActiveProject } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'dependencies' | 'architecture' | 'docs' | 'security'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'dependencies' | 'architecture' | 'docs' | 'security' | 'feature-finder' | 'impact-analyzer'>('overview');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'git' | 'zip'>('git');
   const [projName, setProjName] = useState('');
@@ -39,6 +41,54 @@ export const Dashboard = () => {
   const [chatQuery, setChatQuery] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([]);
   const [chatLoading, setChatLoading] = useState(false);
+
+  // Zoom control state for Architecture Diagrams
+  const [archScale, setArchScale] = useState(1);
+  const defaultScaleRef = useRef(1);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  const archContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setArchScale(1);
+    setIsFullScreen(false);
+  }, [activeProject?._id, activeTab]);
+
+  // Listen for Escape key to close fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullScreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!archContainerRef.current) return;
+    setIsPanning(true);
+    panStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: archContainerRef.current.scrollLeft,
+      scrollTop: archContainerRef.current.scrollTop,
+    };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning || !archContainerRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    archContainerRef.current.scrollLeft = panStart.current.scrollLeft - dx;
+    archContainerRef.current.scrollTop = panStart.current.scrollTop - dy;
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
 
   // Refs for graph containers
   const cyRef = useRef<HTMLDivElement>(null);
@@ -134,7 +184,15 @@ export const Dashboard = () => {
 
     const cyElements: any[] = [];
     dependencyGraph.nodes.forEach((n) => {
-      cyElements.push({ data: { id: n.id, label: n.label, type: n.type } });
+      const ext = n.label.split('.').pop()?.toLowerCase() || '';
+      let fileGroup = 'other';
+      if (['tsx', 'jsx'].includes(ext)) fileGroup = 'component';
+      else if (['ts', 'js'].includes(ext)) fileGroup = 'logic';
+      else if (['css', 'scss', 'less'].includes(ext)) fileGroup = 'style';
+      else if (['html'].includes(ext)) fileGroup = 'page';
+      else if (['json', 'md', 'yml', 'yaml'].includes(ext)) fileGroup = 'config';
+
+      cyElements.push({ data: { id: n.id, label: n.label, type: n.type, fileGroup } });
     });
     dependencyGraph.edges.forEach((e, idx) => {
       cyElements.push({ data: { id: `e${idx}`, source: e.source, target: e.target } });
@@ -147,17 +205,64 @@ export const Dashboard = () => {
         {
           selector: 'node',
           style: {
-            'background-color': '#3b66f5',
             label: 'data(label)',
             color: '#cbd5e1',
             'font-size': '10px',
-            'text-valign': 'center',
+            'font-weight': 'bold',
+            'text-valign': 'bottom',
+            'text-margin-y': 6,
             'text-halign': 'center',
-            width: '45px',
-            height: '45px',
+            'text-wrap': 'wrap',
+            'text-max-width': '75px',
+            width: '28px',
+            height: '28px',
             'border-width': '2px',
-            'border-color': '#1e1b4b',
+            'border-color': '#0f172a',
+            'transition-property': 'background-color, border-color',
+            'transition-duration': 0.3,
           },
+        },
+        {
+          selector: 'node[fileGroup="component"]',
+          style: {
+            'background-color': '#a78bfa',
+            'border-color': '#4c1d95',
+          }
+        },
+        {
+          selector: 'node[fileGroup="logic"]',
+          style: {
+            'background-color': '#fde047',
+            'border-color': '#713f12',
+          }
+        },
+        {
+          selector: 'node[fileGroup="style"]',
+          style: {
+            'background-color': '#f472b6',
+            'border-color': '#701a75',
+          }
+        },
+        {
+          selector: 'node[fileGroup="page"]',
+          style: {
+            'background-color': '#f97316',
+            'border-color': '#7c2d12',
+          }
+        },
+        {
+          selector: 'node[fileGroup="config"]',
+          style: {
+            'background-color': '#94a3b8',
+            'border-color': '#1e293b',
+          }
+        },
+        {
+          selector: 'node[fileGroup="other"]',
+          style: {
+            'background-color': '#34d399',
+            'border-color': '#064e3b',
+          }
         },
         {
           selector: 'edge',
@@ -173,6 +278,12 @@ export const Dashboard = () => {
       layout: {
         name: 'cose',
         animate: false,
+        refresh: 20,
+        fit: true,
+        padding: 40,
+        nodeOverlap: 50,
+        idealEdgeLength: () => 100,
+        nodeRepulsion: () => 15000,
       },
     });
 
@@ -185,10 +296,23 @@ export const Dashboard = () => {
 
     const renderMermaid = async () => {
       try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true
+          }
+        });
         mermaidRef.current!.innerHTML = '';
         const { svg } = await mermaid.render('mermaid-svg-render', architectureMermaid);
         if (mermaidRef.current) {
           mermaidRef.current.innerHTML = svg;
+          
+          // Default zoom scale to 100% (1.0) as per user preference
+          defaultScaleRef.current = 1.0;
+          setArchScale(1.0);
         }
       } catch (err) {
         console.error('Mermaid render error:', err);
@@ -197,15 +321,13 @@ export const Dashboard = () => {
     };
 
     renderMermaid();
-  }, [activeTab, architectureMermaid]);
+  }, [activeTab, architectureMermaid, isFullScreen]);
 
   // Explain selected file
   const loadFileContent = async (filePath: string) => {
     setFileContentLoading(true);
     try {
-      // Prompt explain to get file content mock or explain details
-      const response = await projectService.explain(activeProject!._id, 'Load raw file content', filePath);
-      // For mock purposes, display documentation info or fallback
+      const response = await projectService.getFileContent(activeProject!._id, filePath);
       setSelectedFileContent(response);
     } catch (err) {
       setSelectedFileContent('Failed to load file contents.');
@@ -265,10 +387,27 @@ export const Dashboard = () => {
     }
   };
 
+  // Delete project handler
+  const handleDeleteProject = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this repository and all its scanned analysis data?')) {
+      return;
+    }
+    try {
+      await projectService.delete(id);
+      setProjects(projects.filter(p => p._id !== id));
+      if (activeProject?._id === id) {
+        setActiveProject(null);
+        setSelectedFile(null);
+      }
+    } catch (err) {
+      alert('Failed to delete repository.');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 flex text-slate-100 font-sans">
+    <div className="min-h-screen bg-slate-950 flex flex-col lg:flex-row text-slate-100 font-sans">
       {/* Sidebar: Projects list */}
-      <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">
+      <aside className="w-full lg:w-80 bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col flex-shrink-0">
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🗺️</span>
@@ -312,19 +451,33 @@ export const Dashboard = () => {
                 }`}
               >
                 <div className="font-semibold text-sm truncate">{project.name}</div>
-                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2 border-t border-slate-800/40 pt-2">
                   <span className="capitalize">{project.sourceType}</span>
-                  <span
-                    className={`font-semibold uppercase tracking-wider ${
-                      project.status === 'completed'
-                        ? 'text-green-500'
-                        : project.status === 'failed'
-                        ? 'text-red-500'
-                        : 'text-yellow-500 animate-pulse'
-                    }`}
-                  >
-                    {project.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-semibold uppercase tracking-wider ${
+                        project.status === 'completed'
+                          ? 'text-green-500'
+                          : project.status === 'failed'
+                          ? 'text-red-500'
+                          : 'text-yellow-500 animate-pulse'
+                      }`}
+                    >
+                      {project.status}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteProject(project._id);
+                      }}
+                      className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 p-1 rounded transition-all flex items-center justify-center border border-transparent hover:border-red-500/20"
+                      title="Delete Repository"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2005/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </button>
             ))
@@ -367,7 +520,8 @@ export const Dashboard = () => {
         ) : (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Header project info */}
-            <header className="p-6 border-b border-slate-800 bg-slate-900/20 backdrop-blur-md flex items-center justify-between">
+            {activeTab !== 'feature-finder' && activeTab !== 'impact-analyzer' && (
+              <header className="p-6 border-b border-slate-800 bg-slate-900/20 backdrop-blur-md flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-black">{activeProject.name}</h2>
@@ -400,6 +554,7 @@ export const Dashboard = () => {
                 ))}
               </div>
             </header>
+            )}
 
             {/* Ingestion statuses pending */}
             {activeProject.status !== 'completed' ? (
@@ -428,33 +583,42 @@ export const Dashboard = () => {
               /* Core Tabbed view */
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Navigation Tabs */}
-                <nav className="flex border-b border-slate-800 bg-slate-900/10 px-4">
-                  {[
-                    { id: 'overview', label: 'Overview' },
-                    { id: 'files', label: 'File Explorer' },
-                    { id: 'dependencies', label: 'Dependencies' },
-                    { id: 'architecture', label: 'Architecture Layers' },
-                    { id: 'docs', label: 'Documentation' },
-                    { id: 'security', label: 'Security' },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as any)}
-                      className={`px-4 py-3 font-semibold text-xs transition-colors border-b-2 -mb-px ${
-                        activeTab === tab.id
-                          ? 'border-brand-500 text-brand-400'
-                          : 'border-transparent text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </nav>
+                {activeTab !== 'feature-finder' && activeTab !== 'impact-analyzer' && (
+                  <nav className="flex border-b border-slate-800 bg-slate-900/10 px-4">
+                    {[
+                      { id: 'overview', label: 'Overview' },
+                      { id: 'files', label: 'File Explorer' },
+                      { id: 'dependencies', label: 'Dependencies' },
+                      { id: 'architecture', label: 'Architecture Layers' },
+                      { id: 'docs', label: 'Documentation' },
+                      { id: 'security', label: 'Security' },
+                      { id: 'feature-finder', label: '🔍 Feature Finder' },
+                      { id: 'impact-analyzer', label: '🌊 Impact Analyzer' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as any)}
+                        className={`px-4 py-3 font-semibold text-xs transition-colors border-b-2 -mb-px ${
+                          activeTab === tab.id
+                            ? 'border-brand-500 text-brand-400'
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </nav>
+                )}
 
                 {/* Viewport Content */}
-                <div className="flex-1 overflow-hidden p-6 flex gap-6">
+                {activeTab === 'feature-finder' ? (
+                  <FeatureFinder onClose={() => setActiveTab('overview')} />
+                ) : activeTab === 'impact-analyzer' ? (
+                  <ImpactAnalyzer projectId={activeProject._id} onClose={() => setActiveTab('overview')} />
+                ) : (
+                  <div className="flex-1 overflow-y-auto lg:overflow-hidden p-4 lg:p-6 flex flex-col lg:flex-row gap-6 min-h-0">
                   {/* LEFT: Tab viewports */}
-                  <div className="flex-1 bg-slate-900/30 border border-slate-800/80 rounded-2xl overflow-y-auto p-6 backdrop-blur-sm relative">
+                  <div className={`flex-1 bg-slate-900/30 border border-slate-800/80 rounded-2xl overflow-y-auto p-6 ${isFullScreen ? '' : 'backdrop-blur-sm relative'}`}>
                     {/* OVERVIEW TAB */}
                     {activeTab === 'overview' && (
                       <div className="space-y-6">
@@ -555,14 +719,74 @@ export const Dashboard = () => {
 
                     {/* ARCHITECTURE TAB */}
                     {activeTab === 'architecture' && (
-                      <div className="h-full flex flex-col overflow-auto">
-                        <h4 className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">
-                          Layer Layout Graph
-                        </h4>
+                      <div className={isFullScreen ? "fixed inset-0 z-50 bg-slate-950 flex flex-col p-6 animate-fade-in" : "h-full flex flex-col relative overflow-hidden"}>
+                        <div className="flex items-center justify-between mb-3 pr-48">
+                          <h4 className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                            Layer Layout Graph {isFullScreen && "(Fullscreen)"}
+                          </h4>
+                          {isFullScreen && (
+                            <span className="text-[10px] text-slate-500 font-medium select-none">
+                              💡 Drag the canvas to pan around • Press Esc or Exit to close
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Floating Zoom & Fullscreen Controls */}
+                        <div className="absolute top-8 right-4 z-10 flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1.5 rounded-lg shadow-xl backdrop-blur">
+                          <button
+                            onClick={() => setArchScale(prev => Math.min(prev + 0.25, 5))}
+                            className="p-1 hover:bg-slate-800 text-slate-300 hover:text-slate-100 transition-colors text-xs rounded font-bold w-6 h-6 flex items-center justify-center bg-slate-950/40 border border-slate-800"
+                            title="Zoom In"
+                          >
+                            ➕
+                          </button>
+                          <span className="text-[10px] font-mono font-bold text-slate-400 px-1 select-none">
+                            {Math.round(archScale * 100)}%
+                          </span>
+                          <button
+                            onClick={() => setArchScale(prev => Math.max(prev - 0.25, 0.1))}
+                            className="p-1 hover:bg-slate-800 text-slate-300 hover:text-slate-100 transition-colors text-xs rounded font-bold w-6 h-6 flex items-center justify-center bg-slate-950/40 border border-slate-800"
+                            title="Zoom Out"
+                          >
+                            ➖
+                          </button>
+                          <button
+                            onClick={() => setArchScale(defaultScaleRef.current)}
+                            className="p-1 hover:bg-slate-800 text-slate-300 hover:text-slate-100 transition-colors text-[10px] rounded font-bold w-12 h-6 flex items-center justify-center border border-slate-800 bg-slate-950"
+                            title="Reset Zoom"
+                          >
+                            Reset
+                          </button>
+                          <div className="w-px h-4 bg-slate-850 mx-1" />
+                          <button
+                            onClick={() => setIsFullScreen(!isFullScreen)}
+                            className="px-2 py-1 bg-slate-950/50 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-slate-100 text-[10px] font-bold rounded flex items-center gap-1 transition-colors h-6"
+                            title={isFullScreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+                          >
+                            {isFullScreen ? "📴 Exit" : "🖥️ Fullscreen"}
+                          </button>
+                        </div>
+
                         <div
-                          ref={mermaidRef}
-                          className="flex-1 flex items-center justify-center p-4 bg-slate-950 rounded-xl border border-slate-850 min-h-[500px]"
-                        />
+                          ref={archContainerRef}
+                          onMouseDown={handleMouseDown}
+                          onMouseMove={handleMouseMove}
+                          onMouseUp={handleMouseUp}
+                          onMouseLeave={handleMouseUp}
+                          className={`flex-1 bg-slate-950 rounded-xl border border-slate-850 overflow-auto flex min-h-[500px] select-none relative ${
+                            isPanning ? 'cursor-grabbing' : 'cursor-grab'
+                          }`}
+                        >
+                          <div
+                            ref={mermaidRef}
+                            style={{
+                              transform: `scale(${archScale})`,
+                              transformOrigin: archScale < 1 ? 'center center' : 'top left',
+                              transition: 'transform 0.15s ease-out',
+                            }}
+                            className="mermaid p-12 pointer-events-none inline-block min-w-max min-h-max m-auto"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -627,7 +851,7 @@ export const Dashboard = () => {
                   </div>
 
                   {/* RIGHT: AI assistant chat drawer */}
-                  <div className="w-96 bg-slate-900/20 border border-slate-800/80 rounded-2xl flex flex-col backdrop-blur-sm overflow-hidden">
+                  <div className="w-full lg:w-96 h-96 lg:h-auto flex-shrink-0 bg-slate-900/20 border border-slate-800/80 rounded-2xl flex flex-col backdrop-blur-sm overflow-hidden">
                     <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span>🤖</span>
@@ -693,11 +917,12 @@ export const Dashboard = () => {
                     </form>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </main>
 
       {/* IMPORT REPOSITORY MODAL */}
       {showImportModal && (

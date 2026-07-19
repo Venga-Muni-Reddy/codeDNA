@@ -110,4 +110,74 @@ export const projectService = {
     const res = await api.post(`/projects/${id}/explain`, { query, filePath });
     return res.data.data.explanation;
   },
+  getFileContent: async (id: string, filePath: string) => {
+    const res = await api.get(`/projects/${id}/file`, { params: { path: filePath } });
+    return res.data.data.content;
+  },
+};
+
+export const featureService = {
+  search: async (projectId: string, query: string) => {
+    const res = await api.get('/features/search', { params: { projectId, q: query } });
+    return res.data.data;
+  },
+  get: async (id: string) => {
+    const res = await api.get(`/features/${id}`);
+    return res.data.data.feature;
+  },
+  getGraph: async (id: string) => {
+    const res = await api.get(`/features/${id}/graph`);
+    return res.data.data;
+  },
+  getDependencies: async (id: string) => {
+    const res = await api.get(`/features/${id}/dependencies`);
+    return res.data.data;
+  },
+  getFlow: async (id: string) => {
+    const res = await api.get(`/features/${id}/flow`);
+    return res.data.data;
+  },
+  explain: async (featureId: string, query: string, filePath?: string) => {
+    const res = await api.post('/features/explain', { featureId, query, filePath });
+    return res.data.data.explanation;
+  },
+  pin: async (id: string) => {
+    const res = await api.patch(`/features/${id}/pin`);
+    return res.data.data.feature;
+  },
+  favorite: async (id: string) => {
+    const res = await api.patch(`/features/${id}/favorite`);
+    return res.data.data.feature;
+  },
+  getHistory: async (projectId: string) => {
+    const res = await api.get('/features/history', { params: { projectId } });
+    return res.data.data;
+  },
+};
+
+export const impactService = {
+  get: async (projectId: string, id: string) => {
+    const res = await api.get('/impact/file', { params: { projectId, filePath: id } });
+    return res.data.data.report;
+  },
+  getGraph: async (projectId: string, id: string) => {
+    const res = await api.get('/impact/graph', { params: { projectId, filePath: id } });
+    return res.data.data;
+  },
+  getRisk: async (projectId: string, id: string) => {
+    const res = await api.get('/impact/risk', { params: { projectId, filePath: id } });
+    return res.data.data;
+  },
+  getBusiness: async (projectId: string, id: string) => {
+    const res = await api.get('/impact/business', { params: { projectId, filePath: id } });
+    return res.data.data;
+  },
+  simulate: async (projectId: string, fileNodeId: string, action: 'delete' | 'rename', newName?: string) => {
+    const res = await api.post('/impact/simulate', { projectId, fileNodeId, action, newName });
+    return res.data.data;
+  },
+  explain: async (projectId: string, fileNodeId: string, query: string) => {
+    const res = await api.post('/impact/explain', { projectId, fileNodeId, query });
+    return res.data.data.explanation;
+  },
 };
